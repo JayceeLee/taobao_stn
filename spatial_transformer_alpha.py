@@ -182,7 +182,7 @@ def _get_interpolation_value(inputs, x_idx, y_idx, num_batches, input_height, in
     # shape: [num_batches, out_im_size], [0:num_batches-1]' * ones([1, out_im_size])
     batch_base = tf.range(num_batches) * input_im_size
     ones_out_im_size = tf.ones([1, output_im_size], 'int32')
-    sampling_idx_mat = tf.matmul(tf.expand_dims(batch_base, 1), ones_out_im_size)
+    sampling_idx_mat = tf.expand_dims(batch_base, 1) * ones_out_im_size
     sampling_idx_shift_base = tf.reshape(sampling_idx_mat, [-1])
 
     # input_size shift per batch
@@ -191,6 +191,5 @@ def _get_interpolation_value(inputs, x_idx, y_idx, num_batches, input_height, in
     value_sampled = tf.gather(inputs_flat, sampling_idx)
     value_sampled_formatted = tf.reshape(value_sampled, [num_batches, output_height, output_width, num_channels])
 
-    # the input image is uint8 format
-    return tf.cast(value_sampled_formatted, 'float32')
+    return value_sampled_formatted
 

@@ -1,4 +1,5 @@
 import os
+import csv
 import tensorflow as tf
 import numpy as np
 import inception_v2
@@ -9,11 +10,11 @@ from spatial_transformer_alpha import transformer
 
 is_training = True
 
-filename_dir = '/home/deepinsight/jiaguo'
-train_filename = 'taobao_train.csv3'
+filename_dir = '/home/tze'
+train_filename = 'image_for_train.csv'
 
 fine_tune_ckpt_dir = '/home/tze/Workspace/data-set/ckpt/inception_ckpt'
-save_dir = '/home/tze/Workspace/vars/stntriplet'
+save_dir = '/home/tze/Workspace/vars/taobao'
 
 localization_var_to_train_scope = ['stn/localization/logits',
                                    'stn/localization/inception_net/InceptionV2/Mixed_5c',
@@ -23,10 +24,7 @@ localization_var_to_train_scope = ['stn/localization/logits',
 classification_var_to_train_scope = ['stn/classification/logits',
                                      'stn/classification/path_0/InceptionV2/Mixed_5c',
                                      'stn/classification/path_0/InceptionV2/Mixed_5b',
-                                     'stn/classification/path_0/InceptionV2/Mixed_5a',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5c',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5b',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5a']
+                                     'stn/classification/path_0/InceptionV2/Mixed_5a']
 
 
 NUM_TRANSFORMER = 1
@@ -41,9 +39,9 @@ channels = 3
 transformer_output_size = [224, 224]
 
 num_epochs = 2
-batch_size = 2
+batch_size = 4
 
-weight_decay = 4e-5
+weight_decay = 2e-5
 label_smoothing = 0.1
 rmsprop_decay = 0.9
 num_epochs_per_decay = 2
@@ -66,7 +64,7 @@ def inputs_loader(file_dir, file):
 
     # read the csv file row by row
     record_defaults = [[''], [0]]
-    image_path, image_label, *_ = tf.decode_csv(records, record_defaults)
+    image_path, image_label = tf.decode_csv(records, record_defaults)
 
     # decode and preprocess the image
     file_content = tf.read_file(image_path)
@@ -108,10 +106,7 @@ def inputs_loader_for_taobao(file_dir, file):
     num_threads = 4
     min_after_dequeue = 13 * batch_size
     capacity = min_after_dequeue + 3 * batch_size
-    image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size,
-                                                      min_after_dequeue=min_after_dequeue,
-                                                      capacity=capacity,
-                                                      num_threads=num_threads)
+    image_batch, label_batch = tf.train.batch([image, label], batch_size, capacity=capacity, num_threads=num_threads)
 
     return image_batch, label_batch
 
@@ -255,13 +250,14 @@ def localization_net_alpha(inputs, num_transformer, num_theta_params):
 
     # fc layer using [1, 1] convolution kernel: 1*1*1024
     with tf.variable_scope('logits'):
+        net = slim.conv2d(net, 128, [1, 1], scope='conv2d_a_1x1')
         kernel_size = inception_v2._reduced_kernel_size_for_small_input(net, [7, 7])
-        net = slim.avg_pool2d(net, kernel_size, padding='VALID', scope='avg_pool_a_{}x{}'.format(*kernel_size))
+        net = slim.conv2d(net, 128, kernel_size, padding='VALID', scope='conv2d_b_{}x{}'.format(*kernel_size))
         init_biase = tf.constant_initializer([2.0, .0, 2.0, .0] * num_transformer)
         logits = slim.conv2d(net, num_transformer * num_theta_params, [1, 1],
                              weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
                              biases_initializer=init_biase,
-                             normalizer_fn=None, activation_fn=tf.nn.tanh, scope='conv2d_b_1x1')
+                             normalizer_fn=None, activation_fn=tf.nn.tanh, scope='conv2d_c_1x1')
 
         return tf.squeeze(logits, [1, 2])
 
@@ -298,30 +294,6 @@ def get_vars_to_train(train_scope):
     return vars_to_train
 
 
-# def get_localization_var_to_train(localization_scope):
-#     """Return the list of var object for training
-#
-#     """
-#     var_to_train = []
-#     for scope in localization_scope:
-#         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
-#         var_to_train.extend(var_list)
-#
-#     return var_to_train
-#
-#
-# def get_classification_var_to_train(classification_scope):
-#     """Return the list of var object for training
-#
-#     """
-#     var_to_train = []
-#     for scope in classification_scope:
-#         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
-#         var_to_train.extend(var_list)
-#
-#     return var_to_train
-
-
 def _inception_logits(inputs, num_outputs, dropout_keep_prob=1.0, activ_fn=None):
     with tf.variable_scope('logits'):
         kernel_size = inception_v2._reduced_kernel_size_for_small_input(inputs, [7, 7])
@@ -356,43 +328,43 @@ def _get_var_to_restore():
     return var_dict_list
 
 
-def _get_var_to_train():
-    """Return the list of var object for training
-
-    """
-    scope_to_train = ['stn/localization/logits', 'stn/classification/logits']
-    var_to_train = []
-    for scope in scope_to_train:
-        var_list = tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope)
-        var_to_train.extend(var_list)
-
-    return var_to_train
-
-
-def _get_localization_var_to_fine_tune():
-    """Return the dict of (name.op.name, var) pairs for fine tuning
-
-    """
-    scope_prefix = 'stn/localization/'
-    len_prefix = len(scope_prefix)
-    var_dict = {var.op.name[len_prefix:]: var for var in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope_prefix)}
-
-    return var_dict
+# def _get_var_to_train():
+#     """Return the list of var object for training
+#
+#     """
+#     scope_to_train = ['stn/localization/logits', 'stn/classification/logits']
+#     var_to_train = []
+#     for scope in scope_to_train:
+#         var_list = tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope)
+#         var_to_train.extend(var_list)
+#
+#     return var_to_train
 
 
-def _get_classification_var_to_fine_tune():
-    """Return the list of var_dict of classification net with mulitplex paths
-
-    """
-    var_dict_list = []
-    for path_idx in range(NUM_TRANSFORMER):
-        scope_prefix = 'stn/classification/path_{}'.format(path_idx)
-        len_prefix = len(scope_prefix)
-        var_dict = {var.op.name[len_prefix:]: var
-                    for var in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope_prefix)}
-        var_dict_list.append(var_dict)
-
-    return var_dict_list
+# def _get_localization_var_to_fine_tune():
+#     """Return the dict of (name.op.name, var) pairs for fine tuning
+#
+#     """
+#     scope_prefix = 'stn/localization/'
+#     len_prefix = len(scope_prefix)
+#     var_dict = {var.op.name[len_prefix:]: var for var in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope_prefix)}
+#
+#     return var_dict
+#
+#
+# def _get_classification_var_to_fine_tune():
+#     """Return the list of var_dict of classification net with mulitplex paths
+#
+#     """
+#     var_dict_list = []
+#     for path_idx in range(NUM_TRANSFORMER):
+#         scope_prefix = 'stn/classification/path_{}'.format(path_idx)
+#         len_prefix = len(scope_prefix)
+#         var_dict = {var.op.name[len_prefix:]: var
+#                     for var in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES, scope_prefix)}
+#         var_dict_list.append(var_dict)
+#
+#     return var_dict_list
 
 
 def _theta_activ_fn(theta):
@@ -405,9 +377,9 @@ def _get_filename_list(file_dir, file):
     cls_label_list = []
     with open(filename_path, 'r') as f:
         for line in f:
-            filename, label, *_ = line.split(',')
-            filename_list.append(filename)
-            cls_label_list.append(int(label))
+            file_info = line.strip().split(',')
+            filename_list.append(file_info[0])
+            cls_label_list.append(int(file_info[1]))
 
     return filename_list, cls_label_list
 
@@ -463,6 +435,22 @@ def main():
     #     # Wait for threads to finish.
     #     coord.join(threads)
 
+
+
+    # filename_path = os.path.join(filename_dir, train_filename)
+    # filename_list = []
+    # cls_label_list = []
+    # with open(filename_path, 'r') as f:
+    #     for line in f:
+    #         filename, label, nid, attr  = line.split(',')
+    #         filename_list.append(filename)
+    #         cls_label_list.append(int(label))
+    #
+    # for idx in range(7):
+    #     print(filename_list[idx])
+    #     print(cls_label_list[idx])
+
+    # save the new ckpt for stn classfication
     if is_training:
         dropout_keep_prob = 0.7
     else:
@@ -479,42 +467,75 @@ def main():
     # var_train_list = _get_var_to_train()
 
     global_step = slim.create_global_step()
-    # localization_scope = ['stn/localization']
-    # classification_scope = ['stn/classification']
-    localization_scope = localization_var_to_train_scope
-    classification_scope = classification_var_to_train_scope
+    localization_scope = ['stn/localization']
+    classification_scope = ['stn/classification']
+    # localization_scope = localization_var_to_train_scope
+    # classification_scope = classification_var_to_train_scope
     train_op = train_step(batch_loss, global_step, localization_scope, classification_scope)
     # summary_op = tf.summary.merge_all()
 
     saver = tf.train.Saver()
     with tf.Session() as sess:
         fine_tune_model_path = os.path.join(fine_tune_ckpt_dir, 'inception_v2.ckpt')
-        init_fn(sess, fine_tune_model_path, save_dir, is_fine_tuning=False)
+        init_fn(sess, fine_tune_model_path, save_dir)
+        saver.save(sess, os.path.join(save_dir, 'taobao_init.ckpt'), global_step=global_step)
+        print('init fine tune params saved')
 
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-        try:
-            while not coord.should_stop():
-                # Run training steps or whatever
-                loss, accuracy, step, _ = sess.run([batch_loss, batch_accuracy, global_step, train_op])
-                if step % 777 == 0:
-                    print('step: {:>5}, loss: {:.5f}'.format(step, loss))
-                    saver.save(sess, os.path.join(save_dir, 'stn.ckpt'), global_step=global_step)
-                    print('save model ckpt')
-                if step % 11 == 0:
-                    print('step: {:>5}, loss: {:.5f}, accuracy: {:.5f}'.format(step, loss, accuracy))
-                else:
-                    print('step: {:>5}, loss: {:.5f}'.format(step, loss))
 
-        except tf.errors.OutOfRangeError:
-            print('Done training -- epoch limit reached')
-        finally:
-            # When done, ask the threads to stop.
-            coord.request_stop()
 
-        # Wait for threads to finish.
-        coord.join(threads)
+    # if is_training:
+    #     dropout_keep_prob = 0.7
+    # else:
+    #     dropout_keep_prob = 1.0
+    #
+    # inputs, labels = inputs_loader_for_taobao(filename_dir, train_filename)
+    #
+    # logits = inference(inputs, dropout_keep_prob)
+    #
+    # batch_loss = train_loss(labels, logits)
+    # batch_accuracy = train_accuracy(labels, logits)
+    #
+    # # var_train_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    # # var_train_list = _get_var_to_train()
+    #
+    # global_step = slim.create_global_step()
+    # # localization_scope = ['stn/localization']
+    # # classification_scope = ['stn/classification']
+    # localization_scope = localization_var_to_train_scope
+    # classification_scope = classification_var_to_train_scope
+    # train_op = train_step(batch_loss, global_step, localization_scope, classification_scope)
+    # # summary_op = tf.summary.merge_all()
+    #
+    # saver = tf.train.Saver()
+    # with tf.Session() as sess:
+    #     fine_tune_model_path = os.path.join(fine_tune_ckpt_dir, 'inception_v2.ckpt')
+    #     init_fn(sess, fine_tune_model_path, save_dir)
+    #
+    #     coord = tf.train.Coordinator()
+    #     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    #
+    #     try:
+    #         while not coord.should_stop():
+    #             # Run training steps or whatever
+    #             loss, accuracy, step, _ = sess.run([batch_loss, batch_accuracy, global_step, train_op])
+    #             if step % 777 == 0:
+    #                 print('step: {:>5}, loss: {:.5f}'.format(step, loss))
+    #                 saver.save(sess, os.path.join(save_dir, 'taobao.ckpt'), global_step=global_step)
+    #                 print('save model ckpt')
+    #             if step % 11 == 0:
+    #                 print('step: {:>5}, loss: {:.5f}, accuracy: {:.5f}'.format(step, loss, accuracy))
+    #             else:
+    #                 print('step: {:>5}, loss: {:.5f}'.format(step, loss))
+    #
+    #     except tf.errors.OutOfRangeError:
+    #         print('Done training -- epoch limit reached')
+    #     finally:
+    #         # When done, ask the threads to stop.
+    #         coord.request_stop()
+    #
+    #     # Wait for threads to finish.
+    #     coord.join(threads)
 
 
 if __name__ == '__main__':

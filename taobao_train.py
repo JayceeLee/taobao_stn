@@ -16,10 +16,7 @@ finetune_localization_var_scope = ['stn/localization/logits',
 finetune_classification_var_scope = ['stn/classification/logits',
                                      'stn/classification/path_0/InceptionV2/Mixed_5c',
                                      'stn/classification/path_0/InceptionV2/Mixed_5b',
-                                     'stn/classification/path_0/InceptionV2/Mixed_5a',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5c',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5b',
-                                     'stn/classification/path_1/InceptionV2/Mixed_5a']
+                                     'stn/classification/path_0/InceptionV2/Mixed_5a']
 
 is_fine_tuning = True
 dropout_keep_prob = 0.7
@@ -49,7 +46,7 @@ def train():
     saver = tf.train.Saver()
     with tf.Session() as sess:
         fine_tune_model_path = os.path.join(fine_tune_ckpt_dir, 'inception_v2.ckpt')
-        init_fn(sess, fine_tune_model_path, ckpt_save_dir, is_fine_tuning=False)
+        init_fn(sess, fine_tune_model_path, ckpt_save_dir, is_fine_tuning)
 
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
