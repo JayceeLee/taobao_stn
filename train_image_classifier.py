@@ -46,18 +46,18 @@ cls_train_vars_scope = ['stn/classification/logits',
 checkpoint_exclude_scopes = ['stn/localization/logits', 'stn/classification/logits']
 
 
-dropout_keep_prob = 0.7
+dropout_keep_prob = 0.5
 transformer_output_size = [224, 224]
 default_image_size = 224
 
 num_epochs = 50
 learning_rate_cls = 0.01
-learning_rate_loc = 0.0001
+learning_rate_loc = 0.00001
 
-filename_dir = '/home/tze'
-file = 'image_for_train.csv'
-save_dir = '/home/tze/Tmp'
-ckpt_dir = '/home/tze/Workspace/vars/taobao'
+filename_dir = '/home/deepinsight/tongzhen/data-set/taobao_stn'
+file = 'taobao_train_tf.csv'
+save_dir = '/home/deepinsight/tongzhen/vars/taobao_stn'
+ckpt_dir = '/home/deepinsight/tongzhen/ckpt/init'
 
 
 tf.app.flags.DEFINE_boolean('train_partial_layers', True,
@@ -73,7 +73,7 @@ tf.app.flags.DEFINE_string(
     'train_dir', save_dir,
     'Directory where checkpoints and event logs are written to.')
 
-tf.app.flags.DEFINE_integer('num_clones', 1,
+tf.app.flags.DEFINE_integer('num_clones', 4,
                             'Number of model clones to deploy.')
 
 tf.app.flags.DEFINE_boolean('clone_on_cpu', False,
@@ -91,7 +91,7 @@ tf.app.flags.DEFINE_integer(
     'The number of parallel readers that read data from the dataset.')
 
 tf.app.flags.DEFINE_integer(
-    'num_preprocessing_threads', 4,
+    'num_preprocessing_threads', 16,
     'The number of threads used to create the batches.')
 
 tf.app.flags.DEFINE_integer(
@@ -99,11 +99,11 @@ tf.app.flags.DEFINE_integer(
     'The frequency with which logs are print.')
 
 tf.app.flags.DEFINE_integer(
-    'save_summaries_secs', 600,
+    'save_summaries_secs', 3600,
     'The frequency with which summaries are saved, in seconds.')
 
 tf.app.flags.DEFINE_integer(
-    'save_interval_secs', 600,
+    'save_interval_secs', 3600,
     'The frequency with which the model is saved, in seconds.')
 
 tf.app.flags.DEFINE_integer(
@@ -523,7 +523,7 @@ def main(_):
             net = slim.conv2d(net, 128, [1, 1], scope='conv2d_a_1x1')
             kernel_size = inception_v2._reduced_kernel_size_for_small_input(net, [7, 7])
             net = slim.conv2d(net, 128, kernel_size, padding='VALID', scope='conv2d_b_{}x{}'.format(*kernel_size))
-            init_biase = tf.constant_initializer([2.0, .0, 2.0, .0] * num_transformer)
+            init_biase = tf.constant_initializer([1.1, .0, 1.1, .0] * num_transformer)
             logits = slim.conv2d(net, num_transformer * num_theta_params, [1, 1],
                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
                                  biases_initializer=init_biase,
@@ -611,9 +611,9 @@ def main(_):
         cls_label_list = []
         with open(filename_path, 'r') as f:
             for line in f:
-                file_info = line.strip().split(',')
-                filename_list.append(file_info[0])
-                cls_label_list.append(int(file_info[1]))
+                filename, label, nid, attr = line.strip().split(',')
+                filename_list.append(filename)
+                cls_label_list.append(int(label))
 
         return filename_list, cls_label_list
 
@@ -625,7 +625,7 @@ def main(_):
 
       # decode and preprocess the image
       file_content = tf.read_file(filename)
-      image = tf.image.decode_image(file_content, channels=3)
+      image = tf.image.decode_jpeg(file_content, channels=3)
 
       train_image_size = FLAGS.train_image_size or default_image_size
       image = image_preprocessing_fn(image, train_image_size, train_image_size)

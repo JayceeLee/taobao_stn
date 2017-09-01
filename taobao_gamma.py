@@ -10,11 +10,11 @@ from spatial_transformer_alpha import transformer
 
 is_training = True
 
-filename_dir = '/home/tze'
-train_filename = 'image_for_train.csv'
+filename_dir = '/home/deepinsight/tongzhen/data-set/taobao_stn'
+train_filename = 'taobao_train.csv3'
 
-fine_tune_ckpt_dir = '/home/tze/Workspace/data-set/ckpt/inception_ckpt'
-save_dir = '/home/tze/Workspace/vars/taobao'
+fine_tune_ckpt_dir = '/home/deepinsight/tongzhen/ckpt/standard'
+save_dir = '/home/deepinsight/tongzhen/ckpt/init'
 
 localization_var_to_train_scope = ['stn/localization/logits',
                                    'stn/localization/inception_net/InceptionV2/Mixed_5c',
